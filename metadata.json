@@ -1,0 +1,7 @@
+{
+  "name": "AI Spark Dictionary",
+  "description": "A vibrant, AI-powered dictionary with multi-language support, image generation, flashcards, and storytelling features.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
