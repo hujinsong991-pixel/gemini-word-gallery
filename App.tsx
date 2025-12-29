@@ -17,27 +17,14 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [notebook, setNotebook] = useState<NotebookItem[]>([]);
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('ai_dict_theme') as 'light' | 'dark') || 'light';
-  });
-  
   const [audioCache, setAudioCache] = useState<AudioCache>({});
 
   useEffect(() => {
     const saved = localStorage.getItem('ai_dictionary_notebook');
     if (saved) setNotebook(JSON.parse(saved));
-    
-    if (theme === 'dark') document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
+    // 移除强制暗色，保持明亮的奶白色调
+    document.documentElement.classList.remove('dark');
   }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    localStorage.setItem('ai_dict_theme', newTheme);
-    if (newTheme === 'dark') document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  };
 
   const updateNotebook = (newNotebook: NotebookItem[]) => {
     setNotebook(newNotebook);
@@ -60,26 +47,16 @@ const App: React.FC = () => {
       
       generateEntryImage(entry.word, entry.definition).then(img => {
         if (img) setCurrentEntry(prev => prev ? { ...prev, imageUrl: img } : null);
-      });
+      }).catch(console.error);
 
-      fetchSpeechBuffer(entry.word, entry.targetLang).then(buffer => {
-        if (buffer) setAudioCache(prev => ({ ...prev, [entry.word]: buffer }));
-      });
-      fetchSpeechBuffer(entry.definition, entry.nativeLang).then(buffer => {
-        if (buffer) setAudioCache(prev => ({ ...prev, [entry.definition]: buffer }));
-      });
-
-      entry.examples.forEach((ex, idx) => {
-        fetchSpeechBuffer(ex.sentence, entry.targetLang).then(buffer => {
-          if (buffer) setAudioCache(prev => ({ ...prev, [`ex-target-${idx}`]: buffer }));
+      setTimeout(() => {
+        fetchSpeechBuffer(entry.word, entry.targetLang).then(buffer => {
+          if (buffer) setAudioCache(prev => ({ ...prev, [entry.word]: buffer }));
         });
-        fetchSpeechBuffer(ex.translation, entry.nativeLang).then(buffer => {
-          if (buffer) setAudioCache(prev => ({ ...prev, [`ex-native-${idx}`]: buffer }));
-        });
-      });
+      }, 300);
 
     } catch (err) {
-      alert("Search failed. Try another concept.");
+      alert("Consultation failed. The archive is temporarily inaccessible.");
       setView('start');
     } finally {
       setIsLoading(false);
@@ -105,7 +82,7 @@ const App: React.FC = () => {
   const isEntrySaved = currentEntry ? notebook.some(item => item.word === currentEntry.word && item.targetLang === currentEntry.targetLang) : false;
 
   return (
-    <div className={`max-w-md mx-auto min-h-screen bg-white dark:bg-stone-900 flex flex-col font-sans transition-colors duration-500 selection:bg-stone-100 dark:selection:bg-stone-800`}>
+    <div className="max-w-md mx-auto min-h-screen bg-[#FDFCF8] flex flex-col font-sans selection:bg-amber-100 selection:text-amber-900 transition-colors duration-1000">
       {view === 'start' && (
         <LanguageSelector
           native={nativeLang}
@@ -113,41 +90,29 @@ const App: React.FC = () => {
           onNativeChange={setNativeLang}
           onTargetChange={setTargetLang}
           onStart={() => setView('search')}
-          theme={theme}
-          onToggleTheme={toggleTheme}
         />
       )}
 
       {(view === 'search' || view === 'notebook') && (
         <>
-          <div className="bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm px-8 py-6 sticky top-0 z-20 flex items-center gap-4 transition-colors duration-500">
+          <header className="bg-[#FDFCF8]/90 backdrop-blur-xl px-8 py-10 sticky top-0 z-20 flex items-center gap-4 border-b border-stone-100/50">
             <form onSubmit={handleSearch} className="relative flex-1">
               <input
                 type="text"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder={`Search ${targetLang}...`}
-                className="w-full py-3 bg-transparent border-b border-stone-100 dark:border-stone-800 font-serif text-2xl focus:outline-none focus:border-stone-900 dark:focus:border-stone-300 transition-all duration-700 placeholder:text-stone-200 dark:placeholder:text-stone-700 text-stone-900 dark:text-stone-300"
+                placeholder={`Discover ${targetLang}...`}
+                className="w-full py-2 bg-transparent border-b border-stone-200 font-serif text-3xl focus:outline-none focus:border-amber-600 transition-all duration-700 placeholder:text-stone-300 text-stone-900"
               />
               {isLoading && (
                 <div className="absolute right-0 top-1/2 -translate-y-1/2">
-                   <div className="w-4 h-4 border border-stone-100 dark:border-stone-800 border-t-stone-800 dark:border-t-stone-300 animate-spin rounded-full"></div>
+                   <div className="w-4 h-4 border-2 border-stone-100 border-t-amber-600 animate-spin rounded-full"></div>
                 </div>
               )}
             </form>
-            <button 
-              onClick={toggleTheme}
-              className="p-2 text-stone-300 hover:text-stone-900 dark:text-stone-700 dark:hover:text-stone-500 transition-colors"
-            >
-              {theme === 'light' ? (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-              )}
-            </button>
-          </div>
+          </header>
 
-          <main className="flex-1 pb-24">
+          <main className="flex-1 pb-32">
             {view === 'search' && (
               currentEntry ? (
                 <DictionaryView
@@ -159,14 +124,11 @@ const App: React.FC = () => {
                   audioCache={audioCache}
                 />
               ) : !isLoading && (
-                <div className="flex flex-col items-center justify-center pt-24 text-center px-12 space-y-10 animate-fade-in">
-                  <div className="w-36 h-52 border border-stone-50 dark:border-stone-800 flex items-center justify-center relative group transition-colors">
-                     <div className="absolute inset-4 bg-stone-50/30 dark:bg-stone-800/10 group-hover:inset-2 transition-all duration-1000"></div>
-                     <span className="text-stone-100 dark:text-stone-800 text-[8px] font-serif italic uppercase tracking-widest">Tabula Rasa</span>
-                  </div>
-                  <div className="space-y-3">
-                    <h2 className="text-xl font-serif text-stone-900 dark:text-stone-300 font-light transition-colors">The Silent Gallery</h2>
-                    <p className="text-stone-300 dark:text-stone-700 text-[9px] uppercase tracking-[0.3em] font-bold">Awaiting your inquiry</p>
+                <div className="flex flex-col items-center justify-center pt-32 text-center px-12 space-y-12 animate-fade-in">
+                  <div className="w-px h-24 bg-gradient-to-b from-transparent via-stone-200 to-transparent"></div>
+                  <div className="space-y-4">
+                    <h2 className="text-xs font-serif italic text-stone-400 tracking-[0.4em]">In Silence</h2>
+                    <p className="text-stone-300 text-[9px] uppercase tracking-[0.6em] font-bold italic">Curating your linguistic journey</p>
                   </div>
                 </div>
               )
@@ -184,24 +146,24 @@ const App: React.FC = () => {
             )}
           </main>
 
-          <nav className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-stone-900/80 backdrop-blur-xl px-10 py-6 flex justify-between items-center max-w-md mx-auto z-40 border-t border-stone-50 dark:border-stone-800 transition-colors duration-500">
+          <nav className="fixed bottom-0 left-0 right-0 bg-white/60 backdrop-blur-2xl px-12 py-8 flex justify-between items-center max-w-md mx-auto z-40 border-t border-stone-100/30">
             <button
               onClick={() => { setView('search'); setCurrentEntry(null); }}
-              className={`flex flex-col items-center gap-2 transition-all duration-700 ${view === 'search' ? 'text-stone-900 dark:text-stone-300 scale-105' : 'text-stone-200 dark:text-stone-700'}`}
+              className={`text-[9px] font-bold uppercase tracking-[0.4em] transition-all duration-700 ${view === 'search' ? 'text-amber-700 scale-110' : 'text-stone-300 hover:text-stone-500'}`}
             >
-              <span className="text-[8px] font-bold uppercase tracking-[0.3em]">Curate</span>
+              Curate
             </button>
             <button
               onClick={() => setView('notebook')}
-              className={`flex flex-col items-center gap-2 transition-all duration-700 ${view === 'notebook' ? 'text-stone-900 dark:text-stone-300 scale-105' : 'text-stone-200 dark:text-stone-700'}`}
+              className={`text-[9px] font-bold uppercase tracking-[0.4em] transition-all duration-700 ${view === 'notebook' ? 'text-amber-700 scale-110' : 'text-stone-300 hover:text-stone-500'}`}
             >
-              <span className="text-[8px] font-bold uppercase tracking-[0.3em]">Archive</span>
+              Gallery
             </button>
             <button
-              onClick={() => setView('start')}
-              className="text-stone-200 dark:text-stone-700 hover:text-stone-900 dark:hover:text-stone-300 transition-colors"
+              onClick={() => { setView('start'); setCurrentEntry(null); }}
+              className="text-[9px] font-bold uppercase tracking-[0.4em] text-stone-200 hover:text-amber-700 transition-colors"
             >
-              <span className="text-[8px] font-bold uppercase tracking-[0.4em]">Exit</span>
+              Reset
             </button>
           </nav>
         </>
