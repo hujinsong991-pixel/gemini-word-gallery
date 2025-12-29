@@ -2,8 +2,6 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Language, DictionaryEntry, Example } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-
 // 基础解码工具
 function decode(base64: string) {
   const binaryString = atob(base64);
@@ -34,16 +32,27 @@ async function decodeAudioData(
   return buffer;
 }
 
+/**
+ * 清洗 AI 返回的 JSON 字符串，移除可能存在的 Markdown 标签
+ */
+function cleanJsonString(str: string): string {
+  // 移除 ```json 和 ``` 标签
+  return str.replace(/```json\n?|```/g, '').trim();
+}
+
 export async function lookupWord(
   query: string,
   nativeLang: Language,
   targetLang: Language
 ): Promise<DictionaryEntry> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Translate and explain "${query}" from ${targetLang} to ${nativeLang}. 
-    If targetLang is English, strictly include the IPA phonetic symbols in the "phonetic" field.
-    Provide natural explanations, two examples, and a friendly, minimalist explanation.`,
+    contents: `Translate and explain the word or phrase "${query}" from ${targetLang} to ${nativeLang}. 
+    Return a JSON object only. 
+    If targetLang is English, include the IPA phonetic symbols in the "phonetic" field.
+    Provide one definition, two natural examples with translations, and a poetic, minimalist explanation in "chitChat".`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -70,26 +79,40 @@ export async function lookupWord(
     },
   });
 
-  const data = JSON.parse(response.text || '{}');
-  return { ...data, nativeLang, targetLang };
+  const text = response.text || '{}';
+  const cleanJson = cleanJsonString(text);
+  
+  try {
+    const data = JSON.parse(cleanJson);
+    return { ...data, nativeLang, targetLang };
+  } catch (err) {
+    console.error("JSON Parsing failed for:", cleanJson);
+    throw new Error("Invalid response format from AI");
+  }
 }
 
 export async function generateEntryImage(word: string, definition: string): Promise<string | undefined> {
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: `A clear, simple, and direct visual representation of the concept: "${word}" (${definition}). The style should be clean, high-quality, and easy to understand immediately. Minimalist composition with a neutral background.`,
-  });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: `A minimalist, high-quality artistic visual representation of the concept: "${word}" (${definition}). Clean composition, neutral background, cinematic lighting.`,
+    });
 
-  for (const part of response.candidates?.[0]?.content.parts || []) {
-    if (part.inlineData) {
-      return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+    for (const part of response.candidates?.[0]?.content.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
     }
+  } catch (err) {
+    console.warn("Image generation skipped", err);
   }
   return undefined;
 }
 
-// 核心：仅获取语音 ArrayBuffer，不播放，用于预加载
 export async function fetchSpeechBuffer(text: string, lang: Language): Promise<ArrayBuffer | null> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const voiceMap: Record<Language, string> = {
     'Chinese': 'Kore',
     'English': 'Puck',
@@ -120,7 +143,6 @@ export async function fetchSpeechBuffer(text: string, lang: Language): Promise<A
   }
 }
 
-// 播放已有的 Buffer，实现零延迟
 export async function playSpeechBuffer(buffer: ArrayBuffer): Promise<void> {
   const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
   const decodedBuffer = await decodeAudioData(new Uint8Array(buffer), audioCtx, 24000, 1);
@@ -130,25 +152,27 @@ export async function playSpeechBuffer(buffer: ArrayBuffer): Promise<void> {
   source.start();
 }
 
-// 传统的直接获取并播放（兜底逻辑）
 export async function getSpeech(text: string, lang: Language): Promise<void> {
   const buffer = await fetchSpeechBuffer(text, lang);
   if (buffer) await playSpeechBuffer(buffer);
 }
 
 export async function createStory(words: string[], nativeLang: Language, targetLang: Language): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Write an elegant short story with: ${words.join(', ')}. In ${targetLang} with ${nativeLang} translation. Poetic style.`,
+    contents: `Write an elegant, poetic short story using these words: ${words.join(', ')}. 
+    Write in ${targetLang} with a full ${nativeLang} translation following it.`,
   });
   return response.text || "";
 }
 
 export function createChatSession(entry: DictionaryEntry) {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
     config: {
-      systemInstruction: `You are a sophisticated linguistic curator. Explain nuances elegantly.`,
+      systemInstruction: `You are a sophisticated linguistic curator. Explain the word "${entry.word}" and its nuances elegantly.`,
     },
   });
 }
